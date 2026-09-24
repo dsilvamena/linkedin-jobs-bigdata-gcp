@@ -14,10 +14,17 @@ from dask.distributed import Client, get_worker
 CARPETA = Path(__file__).resolve().parent
 RESULTADOS = CARPETA / "resultados"
 SCHEDULER = os.getenv("DASK_SCHEDULER_ADDRESS", "tcp://10.138.0.13:8786")
+RESUMEN_PARQUET = os.getenv(
+    "POLARS_JOB_SUMMARY_PARQUET",
+    os.getenv(
+        "DASK_JOB_SUMMARY_PARQUET",
+        "gs://utec-linkedin-jobs-2026/processed/job_summary_parquet",
+    ),
+)
 
 
 def ejecutar_en_worker(
-    numero: int, codigo_comun: bytes, codigo_consulta: bytes
+    numero: int, codigo_comun: bytes, codigo_consulta: bytes, resumen_parquet: str
 ) -> tuple[str, str, dict[str, bytes]]:
     """Ejecuta Polars en el worker y devuelve solo sus archivos de salida."""
     nombre_worker = str(get_worker().name)
@@ -27,9 +34,12 @@ def ejecutar_en_worker(
         script = carpeta / f"polars_consulta{numero}.py"
         script.write_bytes(codigo_consulta)
 
+        entorno = os.environ.copy()
+        entorno["POLARS_JOB_SUMMARY_PARQUET"] = resumen_parquet
         proceso = subprocess.run(
-            [sys.executable, str(script)],
+            [sys.executable, "-u", str(script)],
             cwd=carpeta,
+            env=entorno,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -55,13 +65,16 @@ def ejecutar_en_worker(
         return nombre_worker, proceso.stdout, archivos
 
 
-def ejecutar_consulta(cliente: Client, direccion: str, numero: int) -> None:
+def ejecutar_consulta(
+    cliente: Client, direccion: str, numero: int, resumen_parquet: str
+) -> None:
     print(f"\nEnviando consulta {numero} a {direccion}", flush=True)
     futuro = cliente.submit(
         ejecutar_en_worker,
         numero,
         (CARPETA / "polars_comun.py").read_bytes(),
         (CARPETA / f"polars_consulta{numero}.py").read_bytes(),
+        resumen_parquet,
         workers=[direccion],
         allow_other_workers=False,
         pure=False,
@@ -93,6 +106,7 @@ def main() -> None:
     parser.add_argument("--scheduler", default=SCHEDULER)
     parser.add_argument("--worker", default="w-0")
     parser.add_argument("--consulta", type=int, choices=range(1, 11))
+    parser.add_argument("--resumen-parquet", default=RESUMEN_PARQUET)
     argumentos = parser.parse_args()
 
     with Client(argumentos.scheduler, timeout="30s") as cliente:
@@ -111,7 +125,9 @@ def main() -> None:
 
         numeros = [argumentos.consulta] if argumentos.consulta else range(1, 11)
         for numero in numeros:
-            ejecutar_consulta(cliente, direcciones[0], numero)
+            ejecutar_consulta(
+                cliente, direcciones[0], numero, argumentos.resumen_parquet
+            )
 
     if argumentos.consulta is None:
         reunir_tiempos()

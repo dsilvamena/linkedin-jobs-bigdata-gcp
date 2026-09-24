@@ -3,13 +3,22 @@
 from pathlib import Path
 from functools import lru_cache
 import importlib.util
+import os
 import shutil
 import subprocess
 
+import fsspec
 import polars as pl
 
 
 DATOS = "gs://utec-linkedin-jobs-2026/raw"
+RESUMEN_PARQUET = os.getenv(
+    "POLARS_JOB_SUMMARY_PARQUET",
+    os.getenv(
+        "DASK_JOB_SUMMARY_PARQUET",
+        "gs://utec-linkedin-jobs-2026/processed/job_summary_parquet",
+    ),
+)
 RESULTADOS = Path(__file__).resolve().parent / "resultados"
 
 
@@ -43,6 +52,27 @@ def leer(nombre: str) -> pl.LazyFrame:
     # Los campos de estos tres CSV son texto; evita inferencias distintas entre archivos.
     return pl.scan_csv(
         f"{DATOS}/{nombre}", infer_schema=False, storage_options=opciones_gcs()
+    )
+
+
+def leer_resumen_parquet() -> pl.LazyFrame:
+    """Lee las partes de job_summary preparadas para la consulta 7 de Dask."""
+    ruta = RESUMEN_PARQUET.rstrip("/")
+    if ruta.startswith("gs://"):
+        opciones = opciones_gcs()
+        token = opciones["bearer_token"] if opciones else None
+        sistema, carpeta = fsspec.core.url_to_fs(ruta, token=token)
+    else:
+        sistema, carpeta = fsspec.core.url_to_fs(ruta)
+    if not sistema.exists(f"{carpeta}/_SUCCESS"):
+        raise FileNotFoundError(
+            f"Falta el Parquet completo de job_summary en {ruta}. "
+            "Ejecuta dask_proyecto/preparar_job_summary.py antes de la consulta 7."
+        )
+    return pl.scan_parquet(
+        f"{ruta}/parte-*.parquet",
+        storage_options=opciones_gcs() if ruta.startswith("gs://") else None,
+        low_memory=True,
     )
 
 
