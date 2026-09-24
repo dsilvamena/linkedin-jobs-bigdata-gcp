@@ -40,6 +40,8 @@ Ambos frameworks cubren de manera idéntica las siguientes consultas conceptuale
 .
 ├── README.md                     # Documentación principal de la Fase 5
 ├── .gitignore                    # Reglas de exclusión de datos voluminosos y cachés
+├── tiempos_dask.csv              # Tiempos reales de ejecución en Clúster Dask sobre GCS (descargado de GCP)
+├── tiempos_polars.csv            # Tiempos reales de ejecución con Polars sobre GCS (descargado de GCP)
 ├── dask/                         # Implementación con Dask
 │   ├── README.md                 # Guía detallada de ejecución Dask
 │   ├── dask_consultas.py         # Lógica central modular de las 10 consultas
@@ -126,8 +128,28 @@ pip install polars dask[dataframe,distributed] pandas pyarrow gcsfs google-auth
 
 ## ⏱️ Comparativa y Medición de Rendimiento
 
-Cada consulta mide de manera aislada el tiempo exacto de lectura y cálculo analítico (`time.time()`), descartando el overhead de escritura de archivos. Al ejecutar los runners por lotes se consolidan automáticamente:
-- `dask/local/resultados/tiempos_dask.csv`
-- `polars/local/resultados/tiempos_polars.csv`
+Cada consulta mide de manera aislada el tiempo exacto de lectura de datos y cómputo analítico (`time.time()`), excluyendo la sobrecarga de escritura en disco.
 
-Estos resultados permiten analizar la eficiencia en latencia, uso de memoria y escalabilidad vertical (Polars) vs. escalabilidad horizontal (Dask clúster).
+Los archivos ubicados en la raíz del repositorio corresponden a los **resultados reales descargados directamente del entorno de Google Cloud Platform (GCS / Clúster)**:
+
+- **[`tiempos_dask.csv`](tiempos_dask.csv)**: Tiempos de ejecución obtenidos en el **clúster distribuido de Dask** en GCP (conectado al Scheduler en el master y ejecutando sobre los workers remotos `w-0` y `w-1`), leyendo los datos directamente desde Google Cloud Storage (`gs://utec-linkedin-jobs-2026/raw/` y la capa Parquet preparada en GCS).
+- **[`tiempos_polars.csv`](tiempos_polars.csv)**: Tiempos de ejecución obtenidos con **Polars** ejecutado en el nodo worker de GCP (`w-0`), leyendo directamente de Google Cloud Storage con autenticación y motor streaming.
+
+Adicionalmente, en `dask/local/resultados/tiempos_dask.csv` y `polars/local/resultados/tiempos_polars.csv` se conservan los tiempos de referencia generados en ejecuciones locales sobre la máquina de desarrollo.
+
+### 📊 Comparativa de Tiempos Reales en GCP (GCS)
+
+| # | Consulta | Dask Clúster GCS (s) | Polars GCS (s) |
+|---|----------|----------------------|----------------|
+| **1** | Deduplicar por `job_link` | 13.49 s | **2.79 s** |
+| **2** | Conteo y tratamiento de nulos | 5.48 s | **3.32 s** |
+| **3** | Transformar `job_skills` a lista | 11.50 s | **2.54 s** |
+| **4** | Filtrar ofertas remotas | 6.57 s | **1.31 s** |
+| **5** | Top 10 empresas con más publicaciones | 3.00 s | **1.32 s** |
+| **6** | Top 10 países con más ofertas | 2.76 s | **1.42 s** |
+| **7** | Longitud promedio de descripción (`job_summary`) | **16.85 s** | 21.34 s |
+| **8** | Habilidades más demandadas (`explode`) | 14.02 s | **6.64 s** |
+| **9** | Ranking global de empresas por ofertas | 3.13 s | **1.50 s** |
+| **10** | Cruce relacional y promedio de skills | 13.30 s | **4.22 s** |
+| **Total** | **Tiempo acumulado** | **~90.10 s** | **~46.57 s** |
+
