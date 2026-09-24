@@ -1,0 +1,3 @@
+polars>=1.44,<2
+google-auth>=2,<3
+dask[distributed]>=2026.8,<2027

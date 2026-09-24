@@ -1,0 +1,18 @@
+# Dataset (archivos voluminosos almacenados en GCS / local)
+data/
+
+# Documentación interna de coordinación
+plan_trabajo.pdf
+
+# Archivos de sistema y entorno Python
+.DS_Store
+*/.DS_Store
+*/*/.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ipynb_checkpoints/
+.env
+venv/
+.venv/
