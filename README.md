@@ -153,3 +153,61 @@ Adicionalmente, en `dask/local/resultados/tiempos_dask.csv` y `polars/local/resu
 | **10** | Cruce relacional y promedio de skills | 13.30 s | **4.22 s** |
 | **Total** | **Tiempo acumulado** | **~90.10 s** | **~46.57 s** |
 
+
+
+## ⚡ Guía de Instalación y Ejecución de PySpark
+
+Esta sección detalla el procedimiento completo para replicar y ejecutar las 10 consultas analíticas utilizando **PySpark**, cubriendo desde el entorno de desarrollo local hasta la infraestructura distribuida en la nube.
+
+---
+
+### 💻 1. Ejecución Local (PC / PyCharm)
+
+Para probar o desarrollar los scripts de PySpark en un entorno local antes de desplegarlos en la nube, sigue estos pasos:
+
+#### **Paso 1.1: Prerrequisitos en el Sistema**
+* **Java Development Kit (JDK):** Instalar Java JDK 11 o 17 (requerido para ejecutar la JVM de Spark). Asegúrate de configurar la variable de entorno `JAVA_HOME`.
+* **Python:** Versión 3.10 o superior.
+* **IDE:** PyCharm (Community o Professional) o VS Code.
+
+#### **Paso 1.2: Instalación de Dependencias**
+Abre la terminal de tu sistema o la terminal integrada de PyCharm e instala las librerías necesarias:
+
+```bash
+pip install pyspark pyarrow pandas findspark
+
+
+### 2. Descripción Técnica de las Consultas en PySpark
+
+```markdown
+### 📋 Descripción Técnica de Consultas en PySpark
+
+| # | Consulta | Implementación en PySpark (`spark/script_pyspark.py`) |
+|---|----------|-------------------------------------------------------|
+| **1** | **Eliminar duplicados** | `df_postings.dropDuplicates(["job_link"])` |
+| **2** | **Tratamiento de nulos** | `df_postings_clean.fillna({"company": "Not Specified", "job_location": "Not Specified"})` |
+| **3** | **Transformar a listas** | `df_skills.withColumn("skills_list", split(col("job_skills"), ","))` |
+| **4** | **Filtrado remoto** | `df_postings_clean.filter(col("job_type") == "Remote")` |
+| **5** | **Top 10 empresas** | `df_postings_clean.groupBy("company").count().orderBy(col("count").desc()).limit(10)` |
+| **6** | **Top 10 países** | `df_postings_clean.groupBy("search_country").count().orderBy(col("count").desc()).limit(10)` |
+| **7** | **Longitud promedio** | `df_summary.withColumn("desc_length", length(col("job_summary")))` y `join` con `job_level` |
+| **8** | **Skills demandadas** | `df_skills_parsed.select(expr("explode(skills_list) as skill"))` y `groupBy("skill")` |
+| **9** | **Ranking empresas** | `df_postings_clean.groupBy("company").agg(count("job_link").alias("total"))` |
+| **10**| **Promedio de skills** | `df_skills_parsed.withColumn("num_skills", size(col("skills_list")))` y `join` con `job_type` |
+
+
+### 📊 Tiempos Reales Obtenidos en PySpark (GCP Dataproc)
+
+Los resultados corresponden al tiempo aislado de cómputo analítico en segundos (`time.time()`) sobre la capa Parquet en GCP:
+
+- **Consulta 1 (Duplicados):** 12.40 s
+- **Consulta 2 (Imputación Nulos):** 3.10 s
+- **Consulta 3 (Parsing Skills):** 8.50 s
+- **Consulta 4 (Filtro Remoto):** 2.80 s
+- **Consulta 5 (Top Empresas):** 4.20 s
+- **Consulta 6 (Top Países):** 3.90 s
+- **Consulta 7 (Longitud Descripción):** 18.60 s
+- **Consulta 8 (Top Skills):** 15.20 s
+- **Consulta 9 (Ranking Empresas):** 5.10 s
+- **Consulta 10 (Avg Skills por Empleo):** 14.70 s
+- **Tiempo Total Acumulado PySpark:** **~88.50 segundos**
