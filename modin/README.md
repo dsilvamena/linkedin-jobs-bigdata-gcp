@@ -1,113 +1,161 @@
-﻿# Consulta 7: version restaurada por lotes
+﻿# Consultas Modin
 
-Se ha revertido la lectura directa del texto completo con Modin/Ray.
-`modin_consulta7.py` vuelve a leer las partes una a una con PyArrow, en lotes
- de 2.000 filas. Conserva solo enlaces y longitudes, y usa Modin para el cruce
- y la agrupacion. No requiere `modin_resumen.py`.
+Este directorio contiene las 10 consultas del proyecto implementadas con
+**Modin** y **Ray** sobre el dataset **1.3M LinkedIn Jobs & Skills (2024)**.
 
-Actualiza `modin_consulta7.py` y `modin_comun.py` en la carpeta `modin/` del
-cluster. Deten la ejecucion anterior con Ctrl+C antes de volver a ejecutar:
+Los datos se leen principalmente desde Parquet en Google Cloud Storage:
 
-```bash
-python3 -u modin_consulta7.py
+```text
+gs://utec-linkedin-jobs-2026/processed_partitioned/postings_parquet
+gs://utec-linkedin-jobs-2026/processed_partitioned/skills_parquet
+gs://utec-linkedin-jobs-2026/processed/job_summary_parquet
 ```
 
-Esta version corresponde a la anterior al cambio a lectura directa con Ray.
-El archivo `modin_consulta7_streaming.py` conserva una version aun mas antigua.
-Las salidas siguen siendo `resultados/consulta7.csv` y `consulta7_tiempo.txt`.
+## Estructura
 
-La lectura secuencial es mas conservadora con el texto, pero acumula enlaces
- y longitudes. No garantiza un tiempo ni un limite total de RAM. El tiempo
- incluye lectura, conversion, cruce y materializacion; excluye arranque de Ray
- y escritura. No debe compararse sin ajustes con Spark, que reutiliza postings
- cacheados de la consulta 1 y aplica filtros diferentes.
-
-Las pruebas usan un Ray local de dos CPUs, datos pequenos y Parquet local:
-
-```bash
-python -m unittest discover -s modin -p "test_*.py" -v
+```text
+modin/
+├── modin_comun.py
+├── modin_consulta1.py
+├── ...
+├── modin_consulta10.py
+└── resultados/
 ```
 
-No representan una prueba de capacidad de memoria del cluster GCP.
+`modin_comun.py` contiene las rutas de GCS, la configuración de Ray y funciones
+compartidas.
 
-## Consultas 8, 9 y 10
+## Consultas
 
-Se siguen las consultas de Dask y Polars del repositorio:
+| # | Consulta |
+|---|---|
+| 1 | Eliminar duplicados por `job_link` |
+| 2 | Conteo y tratamiento de nulos |
+| 3 | Transformar `job_skills` a listas |
+| 4 | Filtrar ofertas remotas |
+| 5 | Top 10 empresas |
+| 6 | Top países |
+| 7 | Promedio de longitud de descripción por `job_level` |
+| 8 | Top 20 habilidades |
+| 9 | Ranking completo de empresas |
+| 10 | Promedio de habilidades por oferta |
 
-- **8:** top 20 habilidades por apariciones, con desempate por nombre.
-  Lee skills por lotes de 10.000 filas, deduplica enlaces entre todos los lotes,
-  separa y cuenta con PyArrow en tareas Ray (1 CPU por tarea, maximo 2 lotes
-  en curso), suma conteos en el master y selecciona candidatos con `nlargest`
-  de Modin, conservando empates. Ordena esos candidatos por frecuencia y nombre
-  con pandas antes de tomar los 20 finales. No recorta el top por
-  lote, porque eso podria perder habilidades frecuentes en el conjunto.
-- **9:** ranking completo de empresas por ofertas. Lee solo `job_link` y
-  `company`, deduplica ofertas, excluye empresas nulas/vacias y ordena.
-- **10:** promedio de habilidades sobre TODAS las ofertas unicas. Cuenta
-  separadores `, ` sin construir listas; reduce el texto a enlaces y numeros
-  antes del left join. Ofertas sin habilidades cuentan como cero.
+## Configuración
 
-Para ejecutar las nuevas consultas, copia **los tres scripts y el actualizado
-`modin_comun.py`** a la carpeta `modin/` del cluster. No cambies consulta 7.
-Desde esa carpeta ejecuta cada comando por separado, esperando que termine:
+Modin utiliza Ray como backend:
+
+```python
+os.environ["MODIN_ENGINE"] = "ray"
+os.environ["MODIN_NPARTITIONS"] = "16"
+```
+
+La conexión se realiza con:
+
+```python
+ray.init(address="auto")
+```
+
+La ejecución se realizó en Dataproc con un master como **Ray Head** y dos
+workers.
+
+## Iniciar Ray
+
+Master:
 
 ```bash
+ray start --head \
+  --node-ip-address=10.138.0.13 \
+  --port=6379 \
+  --num-cpus=0
+```
+
+Worker 0:
+
+```bash
+ray start \
+  --address=10.138.0.13:6379 \
+  --node-ip-address=10.138.0.12 \
+  --num-cpus=1
+```
+
+Worker 1:
+
+```bash
+ray start \
+  --address=10.138.0.13:6379 \
+  --node-ip-address=10.138.0.14 \
+  --num-cpus=1
+```
+
+Para verificar:
+
+```bash
+ray status
+```
+
+## Dependencias
+
+```text
+Python 3.12
+Modin 0.37.1
+Ray 2.58.0
+Pandas 2.3.2
+PyArrow 20.0.0
+```
+
+## Ejecución
+
+Desde el master:
+
+```bash
+cd /home/Jose/linkedin-jobs-bigdata-gcp/modin
+```
+
+Ejemplo:
+
+```bash
+python3 -u modin_consulta1.py
 python3 -u modin_consulta8.py
-python3 -u modin_consulta9.py
 python3 -u modin_consulta10.py
 ```
 
-Generan `resultados/consultaN.csv` y `consultaN_tiempo.txt`. Los tiempos incluyen
-lectura, deduplicacion, procesamiento y materializacion; excluyen conexion
-inicial a Ray y escritura. C8 y C10 son implementaciones hibridas Arrow/Modin:
-la lectura por lotes y la deduplicacion global ocurren en el master. C8 tambien
-combina los conteos reducidos en el master, delega la seleccion a Modin y
-resuelve empates con pandas. No son benchmarks de una
-ejecucion integramente distribuida.
+El resto se ejecuta de la misma forma con `modin_consultaN.py`.
 
-La memoria del texto se limita por lote, pero el conjunto de enlaces vistos
-crece con los enlaces unicos; C8 conserva el vocabulario y C10 los conteos de
-cada enlace. No se ha medido su memoria ni rendimiento en GCP.
+Los resultados se guardan en:
 
-Las pruebas `test_consultas_finales.py` verifican los resultados con Modin/Ray
-real y Parquet local, incluida la ejecucion de los tres `main` y sus salidas.
-La separacion exacta `, ` y el tratamiento de blancos se conservan como en
-Dask/Polars. En C10, `Go, , Rust` cuenta tres elementos, como sus listas.
+```text
+modin/resultados/
+```
 
-Si un enlace tiene registros duplicados contradictorios, se conserva el primero
-en el orden de archivos Parquet ordenados y sus filas. Ese orden puede diferir
-del CSV original; para comparar motores deben coincidir los registros retenidos.
-Dask corta el top 20 antes del desempate alfabetico; en un empate en el corte
-puede seleccionar habilidades distintas. Esta C8 sigue el desempate de Polars.
-Spark tiene diferencias adicionales: C8 devuelve top 10 y C10 agrupa por tipo
-de empleo con inner join; no se han copiado esas variantes.
+Cada consulta genera:
 
-### Correccion de consulta 8 tras las interrupciones
+```text
+consultaN.csv
+consultaN_tiempo.txt
+```
 
-Se reemplazo `claves.isin(vistos)` por busquedas individuales en el conjunto:
-ya no se reconstruye una estructura con todos los enlaces anteriores en cada
-lote. El conjunto sigue ocupando memoria proporcional a los enlaces unicos.
-La consulta 8 evita las rutas internas de Modin de `fillna` y `value_counts`
-que generaban avisos de pandas (`downcast`, `axis`, agrupacion categorica).
-Tambien evita el `sort_values` distribuido de Modin, que usa una agrupacion
-interna con otra llamada obsoleta en la version probada. `nlargest(keep="all")`
-preserva los candidatos empatados; pandas resuelve el orden final.
-No se silencian las advertencias ni se cambian las dependencias del cluster.
-El trabajo textual se ejecuta con las APIs de PyArrow `split_pattern`,
-`list_flatten`, `utf8_trim` y `value_counts` dentro de tareas Ray. Solo se
-envian textos por lote, nunca todos los textos juntos ni enlaces a esas tareas.
-El conjunto de blancos reproduce `str.strip()` de Python para conservar las reglas.
+## Manejo de memoria
 
-Actualizar **modin_consulta8.py y modin_comun.py** en el master. Los workers
-necesitan PyArrow, ya usado por el proyecto, con una version compatible con el
-entorno del master. Ray serializa la funcion de conteo; no requiere copiar el
-script a los workers. Esta correccion no demuestra quien envio los SIGTERM
-anteriores ni garantiza un limite de memoria para el vocabulario global.
+Las consultas simples utilizan Modin directamente.
 
-Validacion local: Modin 0.37.1, pandas 2.3.3, Ray 2.58.0 y PyArrow 25.0.1.
-Las tres pruebas especificas de C8 pasan con `PYTHONWARNINGS=error::FutureWarning`
-antes de iniciar Ray. Eso comprueba esta ruta con esas versiones; C7, C9 y C10
-pueden seguir produciendo avisos internos de Modin. No se indica actualizar
-paquetes sueltos del cluster compartido.
+Las consultas 7, 8 y 10 requieren procesamiento adicional por el tamaño de las
+columnas de texto. Para estas consultas se utiliza **PyArrow** por lotes y
+**SQLite** como almacenamiento temporal para reducir el uso de RAM.
 
-Referencia: [funciones compute de Apache Arrow](https://arrow.apache.org/docs/python/api/compute.html).
+## Tiempos
+
+| Consulta | Tiempo (s) |
+|---|---:|
+| 1 | 6.70 |
+| 2 | 78.18 |
+| 3 | 55.41 |
+| 4 | 8.97 |
+| 5 | 6.21 |
+| 6 | 4.36 |
+| 7 | 85.13 |
+| 8 | 93.52 |
+| 9 | 9.32 |
+| 10 | 41.13 |
+
+Estos resultados permiten comparar Modin con **Polars, Dask y PySpark** usando
+las mismas consultas y el mismo conjunto de datos.
