@@ -173,13 +173,12 @@ Para probar o desarrollar los scripts de PySpark en un entorno local antes de de
 #### **Paso 1.2: Instalación de Dependencias**
 Abre la terminal de tu sistema o la terminal integrada de PyCharm e instala las librerías necesarias:
 
-```bash
 pip install pyspark pyarrow pandas findspark
 
 
 ### 2. Descripción Técnica de las Consultas en PySpark
 
-```markdown
+
 ### 📋 Descripción Técnica de Consultas en PySpark
 
 | # | Consulta | Implementación en PySpark (`spark/script_pyspark.py`) |
