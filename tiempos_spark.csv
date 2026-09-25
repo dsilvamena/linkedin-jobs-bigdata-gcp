@@ -1,0 +1,11 @@
+consulta,descripcion,tiempo_segundos
+C1,Eliminación de Duplicados,12.4
+C2,Imputación de Valores Nulos,3.1
+C3,Parsing de Habilidades (Array),8.5
+C4,Filtrado por Modalidad Remota,2.8
+C5,Top 10 Empresas con Más Ofertas,4.2
+C6,Top 10 Países de Búsqueda,3.9
+C7,Promedio Longitud de Descripción por Nivel,18.6
+C8,Top 10 Habilidades Más Demandadas,15.2
+C9,Ranking de Empresas por Volumen,5.1
+C10,Promedio de Habilidades por Tipo de Empleo,14.7
